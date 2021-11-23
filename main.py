@@ -31,7 +31,7 @@ if __name__ == '__main__':
           f'\tLiczba znaków = {polish_literary.string_length}\n'
           f'\t{polish_literary.char_dict}\n'
           f'\tEntropia = {polish_literary.entropy()}')
-    polish_it = TextAnalyzer('cpp-szablony.txt')
+    polish_it = TextAnalyzer('tekst_informatyczny.txt')
     print(f'Polski informatyczny\n '
           f'\tCzęstość występowywania znaków:\n '
           f'\tLiczba znaków = {polish_it.string_length}\n'

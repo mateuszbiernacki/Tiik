@@ -1,0 +1,425 @@
+Konfigurowanie ASP.NET Core do pracy z serwerami proxy i usługami równoważenia obciążenia
+13.09.2021
+Czas czytania: 12 min
+
+
+Czy ta strona jest pomocna?
+A w tym celu: Chris Przemysł
+
+W zalecanej konfiguracji dla ASP.NET Core aplikacja jest hostowana przy użyciu usług IIS/ASP.NET Core Module, Nginx lub Apache. Serwery proxy, usługi równoważenia obciążenia i inne urządzenia sieciowe często przesłaniają informacje o żądaniu przed dotarciem do aplikacji:
+
+Gdy żądania HTTPS są przekazywane za pośrednictwem protokołu HTTP, oryginalny schemat (HTTPS) jest utracony i musi być przesyłany dalej w nagłówku.
+Ponieważ aplikacja odbiera żądanie z serwera proxy, a nie jego prawdziwego źródła w Internecie lub sieci firmowej, źródłowy adres IP klienta również musi być przesyłany dalej w nagłówku.
+Te informacje mogą być ważne w przetwarzaniu żądań, na przykład w przekierowaniach, uwierzytelnianiu, generowaniu linków, ocenie zasad i geolokalizacji klienta.
+
+Przekazane nagłówki
+Zgodnie z konwencją serwer proxy przekazuje informacje w nagłówkach HTTP.
+
+PRZEKAZANE NAGŁÓWKI
+Nagłówek	Opis
+X-Forwarded-for	Przechowuje informacje o kliencie, który zainicjował żądanie, oraz kolejnych proxych w łańcuchu serwerów proxy. Ten parametr może zawierać adresy IP (i, opcjonalnie, numery portów). W łańcuchu serwerów proxy pierwszy parametr wskazuje klienta, w którym żądanie zostało wykonane po raz pierwszy. Kolejne identyfikatory serwera proxy są następujące. Ostatni serwer proxy w łańcuchu nie znajduje się na liście parametrów. Adres IP ostatniego serwera proxy i opcjonalnie numer portu są dostępne jako zdalny adres IP w warstwie transportu.
+X-Forwarded-Proto	Wartość schematu pochodzącego (HTTP/HTTPS). Wartość może również być listą schematów, jeśli żądanie przechodziło przez wiele serwerów proxy.
+X-Forwarded-Host	Oryginalna wartość pola Nagłówka hosta. Zazwyczaj proxy nie modyfikują nagłówka Host. Zobacz Biuletyn zabezpieczeń firmy Microsoft CVE-2018-0787, aby uzyskać informacje na temat luki w zabezpieczeniach dotyczącej podniesienia uprawnień, która ma wpływ na systemy, w których serwer proxy nie weryfikuje lub nie ogranicza nagłówków hosta do znanych dobrych wartości.
+Oprogramowanie pośredniczące Forwarded Headers () odczytuje te nagłówki i wypełnia skojarzone ForwardedHeadersMiddleware pola w pliku HttpContext .
+
+Oprogramowanie pośredniczące aktualizuje:
+
+HttpContext.Connection.RemoteIpAddress:ustaw wartość X-Forwarded-For nagłówka. Dodatkowe ustawienia wpływają na sposób, w jaki oprogramowanie pośredniczące ustawia RemoteIpAddress element . Aby uzyskać szczegółowe informacje, zobacz opcje oprogramowania pośredniczącego Przekazane nagłówki.
+HttpContext.Request.Scheme:ustaw wartość X-Forwarded-Proto nagłówka.
+HttpContext.Request.Host:ustaw wartość X-Forwarded-Host nagłówka.
+Aby uzyskać więcej informacji na temat powyższych, zobacz ten GitHub problem.
+
+Można skonfigurować domyślne ustawienia oprogramowania pośredniczącego do przekazywania nagłówków. W przypadku ustawień domyślnych:
+
+Między aplikacją a źródłem żądań istnieje tylko jeden serwer proxy.
+Tylko adresy sprzężenia zwrotnego są konfigurowane dla znanych serwerów proxy i znanych sieci.
+Przekazane nagłówki mają nazwy X-Forwarded-For i X-Forwarded-Proto .
+Wartość to , aby włączyć oprogramowanie pośredniczące, należy w tym miejscu ustawić żądane usług przesyłania ForwardedHeaders ForwardedHeaders.None dalej.
+Nie wszystkie urządzenia sieciowe dodają X-Forwarded-For nagłówki i X-Forwarded-Proto bez dodatkowej konfiguracji. Zapoznaj się ze wskazówkami producenta urządzenia, jeśli żądania proxy nie zawierają tych nagłówków, gdy docierają do aplikacji. Jeśli urządzenie używa innych nazw nagłówków niż i , ustaw opcje i , aby dopasować je do nazw X-Forwarded-For X-Forwarded-Proto ForwardedForHeaderName ForwardedProtoHeaderName nagłówków używanych przez urządzenie. Aby uzyskać więcej informacji, zobacz Forwarded Headers Middleware options (Opcje oprogramowania pośredniczącego nagłówków przekazywania) i Configuration for a proxy that uses different header names (Konfiguracja serwera proxy, który używa różnych nazw nagłówków).
+
+IIS/IIS Express i ASP.NET Core Module
+Oprogramowanie pośredniczące przekazywania nagłówków jest domyślnie włączone przez oprogramowanie pośredniczące integracji usług IIS, gdy aplikacja jest hostowana poza procesem za usługami IIS i modułem ASP.NET Core module. Oprogramowanie pośredniczące do przekazywania nagłówków jest aktywowane w celu uruchomienia najpierw w potoku oprogramowania pośredniczącego z ograniczoną konfiguracją specyficzną dla modułu ASP.NET Core z powodu problemów z zaufaniem dotyczących nagłówków przekazywania (na przykład fałszowania adresów IP). Oprogramowanie pośredniczące jest skonfigurowane do przekazywania nagłówków i i jest X-Forwarded-For ograniczone do pojedynczego serwera proxy hosta X-Forwarded-Proto lokalnego. Jeśli wymagana jest dodatkowa konfiguracja, zobacz opcje oprogramowania pośredniczącego Przekazane nagłówki.
+
+Inne scenariusze serwera proxy i usługi równoważenia obciążenia
+Poza używaniem integracji usług IIS podczashostowania poza procesem oprogramowanie pośredniczące Przekazywane nagłówki nie jest domyślnie włączone. Oprogramowanie pośredniczące Nagłówki dalej musi być włączone, aby aplikacja przetwarzała przekazywane nagłówki za pomocą funkcji UseForwardedHeaders . Po włączeniu oprogramowania pośredniczącego, jeśli dla oprogramowania pośredniczącego nie określono wartości , domyślnym ustawieniem ForwardedHeadersOptions ForwardedHeadersOptions.ForwardedHeaders jest ForwardedHeaders.None.
+
+Skonfiguruj oprogramowanie pośredniczące za pomocą ForwardedHeadersOptions narzędzia do przekazywania X-Forwarded-For nagłówków i X-Forwarded-Proto w pliku Startup.ConfigureServices .
+
+
+Kolejność oprogramowania pośredniczącego przekazane nagłówki
+Oprogramowanie pośredniczące Nagłówki dalej powinno być uruchamiane przed innym oprogramowaniem pośredniczącem. To uporządkowanie zapewnia, że oprogramowanie pośredniczące zależne od informacji o nagłówkach przesyłanych dalej może używać wartości nagłówka do przetwarzania. Oprogramowanie pośredniczące nagłówków dalej może działać po zakończeniu diagnostyki i obsługi błędów, ale należy je uruchomić przed wywołaniem UseHsts funkcji :
+
+C#
+
+Kopiuj
+public class Startup
+{
+    public Startup(IConfiguration configuration)
+    {
+        Configuration = configuration;
+    }
+
+    public IConfiguration Configuration { get; }
+
+    public void ConfigureServices(IServiceCollection services)
+    {
+        services.AddControllersWithViews();
+        services.Configure<ForwardedHeadersOptions>(options =>
+        {
+            options.ForwardedHeaders =
+                ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        });
+    }
+
+    public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
+    {
+        if (env.IsDevelopment())
+        {
+            app.UseDeveloperExceptionPage();
+            app.UseForwardedHeaders();
+        }
+        else
+        {
+            app.UseExceptionHandler("/Home/Error");
+            app.UseForwardedHeaders();
+            app.UseHsts();
+        }
+
+        app.UseHttpsRedirection();
+        app.UseStaticFiles();
+
+        app.UseRouting();
+
+        app.UseAuthorization();
+
+        app.UseEndpoints(endpoints =>
+        {
+            endpoints.MapControllerRoute(
+                name: "default",
+                pattern: "{controller=Home}/{action=Index}/{id?}");
+        });
+    }
+}
+Alternatywnie wywołaj wywołanie UseForwardedHeaders przed diagnostyką:
+
+C#
+
+Kopiuj
+public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
+{
+    app.UseForwardedHeaders();
+
+    if (env.IsDevelopment())
+    {
+        app.UseDeveloperExceptionPage();
+    }
+    else
+    {
+        app.UseExceptionHandler("/Home/Error");
+        app.UseHsts();
+    }
+
+    app.UseHttpsRedirection();
+    app.UseStaticFiles();
+
+    app.UseRouting();
+
+    app.UseAuthorization();
+
+    app.UseEndpoints(endpoints =>
+    {
+        endpoints.MapControllerRoute(
+            name: "default",
+            pattern: "{controller=Home}/{action=Index}/{id?}");
+    });
+}
+ Uwaga
+
+Jeśli w metodzie rozszerzenia za pomocą metody rozszerzenia nie określono wartości , domyślnymi nagłówkami do przekazania są ForwardedHeadersOptions Startup.ConfigureServices UseForwardedHeaders ForwardedHeaders.None. Właściwość ForwardedHeaders musi być skonfigurowana z nagłówkami do przekazywania dalej.
+
+Konfiguracja serwera Nginx
+Aby przesyłać X-Forwarded-For dalej X-Forwarded-Proto nagłówki i , zobacz Hostuj ASP.NET Core w systemie Linux przy użyciu usługi Nginx . Aby uzyskać więcej informacji, zobacz NGINX: Using the Forwarded header (NGINX: Używanie nagłówka Forwarded).
+
+Konfiguracja serwera Apache
+X-Forwarded-For jest dodawany automatycznie (zobacz temat Apache Module mod_proxy: Reverse Proxy Request Headers(Moduł Apache: nagłówki żądań zwrotnego serwera proxy). Aby uzyskać informacje na temat przekazywania X-Forwarded-Proto nagłówka, zobacz Hostuj ASP.NET Core w systemie Linux za pomocą serwera Apache .
+
+Opcje oprogramowania pośredniczącego nagłówków przekazywania
+ForwardedHeadersOptions Kontroluj zachowanie oprogramowania pośredniczącego Przekazane nagłówki. Poniższy przykład zmienia wartości domyślne:
+
+Ogranicz liczbę wpisów w nagłówkach przekazywania do 2 .
+Dodaj znany adres serwera proxy 127.0.10.1 .
+Zmień nazwę przekazanego nagłówka z domyślnego X-Forwarded-For na X-Forwarded-For-My-Custom-Header-Name .
+C#
+
+Kopiuj
+services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardLimit = 2;
+    options.KnownProxies.Add(IPAddress.Parse("127.0.10.1"));
+    options.ForwardedForHeaderName = "X-Forwarded-For-My-Custom-Header-Name";
+});
+OPCJE OPROGRAMOWANIA POŚREDNICZĄCEGO NAGŁÓWKÓW PRZEKAZYWANIA
+Opcja	Opis
+AllowedHosts	Ogranicza hosty według X-Forwarded-Host nagłówka do podanych wartości.
+Wartości są porównywane przy użyciu porządkowych-ignorowanych-liter.
+Należy wykluczyć numery portów.
+Jeśli lista jest pusta, wszystkie hosty są dozwolone.
+Symbol wieloznaczny najwyższego poziomu * zezwala na wszystkie niepuste hosty.
+Symbole wieloznaczne poddomeny są dozwolone, ale nie są zgodne z domeną główną. Na przykład dopasowuje *.contoso.com domenę foo.contoso.com podrzędną, ale nie domenę główną contoso.com .
+Nazwy hostów Unicode są dozwolone, ale są konwertowane na punycode w celu dopasowania.
+Adresy IPv6 muszą zawierać nawiasy graniczne i być w postaci konwencjonalnej (na przykład [ABCD:EF01:2345:6789:ABCD:EF01:2345:6789] ). Adresy IPv6 nie są specjalnie wykonywane w celu sprawdzania równości logicznej między różnymi formatami i nie jest wykonywana kanoniczacja.
+Jeśli nie można ograniczyć dozwolonych hostów, osoba atakująca może podszywać się pod linki wygenerowane przez usługę.
+Wartość domyślna to pusta IList<string> wartość .
+ForwardedForHeaderName	Użyj nagłówka określonego przez tę właściwość zamiast nagłówka określonego przez ForwardedHeadersDefaults.XForwardedForHeaderName. Ta opcja jest używana, gdy serwer proxy/usługa przesyłania dalej nie używa nagłówka, ale używa innego nagłówka do X-Forwarded-For przekazywania informacji.
+
+Wartość domyślna to X-Forwarded-For.
+ForwardedHeaders	Określa, które z nich mają być przetwarzane. Listę pól, które mają zastosowanie, można znaleźć w wylicie ForwardedHeaders. Typowe wartości przypisane do tej właściwości to ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto .
+
+Wartość domyślna to ForwardedHeaders.None.
+ForwardedHostHeaderName	Użyj nagłówka określonego przez tę właściwość zamiast nagłówka określonego przez ForwardedHeadersDefaults.XForwardedHostHeaderName. Ta opcja jest używana, gdy serwer proxy/usługa przesyłania dalej nie używa nagłówka, ale używa innego nagłówka do X-Forwarded-Host przekazywania informacji.
+
+Wartość domyślna to X-Forwarded-Host.
+ForwardedProtoHeaderName	Użyj nagłówka określonego przez tę właściwość zamiast nagłówka określonego przez ForwardedHeadersDefaults.XForwardedProtoHeaderName. Ta opcja jest używana, gdy serwer proxy/usługa przesyłania dalej nie używa nagłówka, ale używa innego nagłówka do X-Forwarded-Proto przekazywania informacji.
+
+Wartość domyślna to X-Forwarded-Proto.
+ForwardLimit	Ogranicza liczbę wpisów w przetwarzanych nagłówkach. Ustaw wartość null , aby wyłączyć limit, ale należy to zrobić tylko wtedy, KnownProxies gdy lub są KnownNetworks skonfigurowane. Ustawienie wartości nie jest zabezpieczeniem (ale nie gwarancją) ochrony przed błędnie skonfigurowanymi proxy i złośliwymi żądaniami, które docierają z kanałów null side-channels w sieci.
+
+Oprogramowanie pośredniczące Przekazane nagłówki przetwarza nagłówki w odwrotnej kolejności od prawej do lewej. Jeśli jest używana wartość domyślna ( ), przetwarzana jest tylko najbardziej po prawej stronie wartość z nagłówków, chyba 1 że wartość ForwardLimit jest zwiększana.
+
+Wartość domyślna to 1.
+KnownNetworks	Zakresy adresów znanych sieci, z których mają być akceptowane przekazywane nagłówki. Podaj zakresy adresów IP przy użyciu notacji CIDR (Classless Interdomain Routing).
+
+Jeśli serwer używa gniazd w trybie podwójnym, adresy IPv4 są dostarczane w formacie IPv6 (na przykład w protokole IPv4 reprezentowanym w 10.0.0.1 protokole IPv6 jako ::ffff:10.0.0.1 ). Zobacz IPAddress.MapToIPv6. Sprawdź, czy ten format jest wymagany, patrząc na adres HttpContext.Connection.RemoteIpAddress.
+
+Wartość domyślna to IList <IPNetwork> zawierająca pojedynczy wpis dla IPAddress.Loopback .
+KnownProxies	Adresy znanych serwerów proxy, z których mają być akceptowane przekazywane nagłówki. Użyj KnownProxies , aby określić dokładne dopasowania adresów IP.
+
+Jeśli serwer używa gniazd w trybie podwójnym, adresy IPv4 są dostarczane w formacie IPv6 (na przykład w protokole IPv4 reprezentowanym w 10.0.0.1 protokole IPv6 jako ::ffff:10.0.0.1 ). Zobacz IPAddress.MapToIPv6. Sprawdź, czy ten format jest wymagany, patrząc na adres HttpContext.Connection.RemoteIpAddress.
+
+Wartość domyślna to IList <IPAddress> zawierająca pojedynczy wpis dla IPAddress.IPv6Loopback .
+OriginalForHeaderName	Użyj nagłówka określonego przez tę właściwość zamiast nagłówka określonego przez ForwardedHeadersDefaults.XOriginalForHeaderName.
+
+Wartość domyślna to X-Original-For.
+OriginalHostHeaderName	Użyj nagłówka określonego przez tę właściwość zamiast nagłówka określonego przez ForwardedHeadersDefaults.XOriginalHostHeaderName.
+
+Wartość domyślna to X-Original-Host.
+OriginalProtoHeaderName	Użyj nagłówka określonego przez tę właściwość zamiast nagłówka określonego przez ForwardedHeadersDefaults.XOriginalProtoHeaderName.
+
+Wartość domyślna to X-Original-Proto.
+RequireHeaderSymmetry	Wymagaj synchronizacji wartości nagłówka między przetwarzaną wartością ForwardedHeadersOptions.ForwardedHeaders.
+
+Wartość domyślna w ASP.NET Core 1.x to true . Wartość domyślna w ASP.NET Core 2.0 lub nowszej to false .
+Scenariusze i przypadki użycia
+Gdy nie jest możliwe dodanie nagłówków przekazywania i wszystkie żądania są bezpieczne
+W niektórych przypadkach dodanie nagłówków przekazywania do żądań proxied do aplikacji może nie być możliwe. Jeśli serwer proxy wymusza, aby wszystkie publiczne żądania zewnętrzne to HTTPS, schemat można ręcznie ustawić w programie przed użyciem dowolnego typu Startup.Configure oprogramowania pośredniczącego:
+
+C#
+
+Kopiuj
+app.Use((context, next) =>
+{
+    context.Request.Scheme = "https";
+    return next();
+});
+Ten kod można wyłączyć za pomocą zmiennej środowiskowej lub innego ustawienia konfiguracji w środowisku dewelopera lub przejściowym.
+
+Zajmowanie się bazą ścieżki i serwerów proxy, które zmieniają ścieżkę żądania
+Niektóre proxy przechodzą ścieżkę bez zmian, ale z podstawową ścieżką aplikacji, którą należy usunąć, aby routing działał prawidłowo. Oprogramowanie pośredniczące UsePathBaseExtensions.UsePathBase dzieli ścieżkę na httpRequest.Path i ścieżkę podstawową aplikacji na httpRequest.PathBase.
+
+Jeśli ścieżka podstawowa aplikacji dla ścieżki serwera proxy została przekazana jako , oprogramowanie pośredniczące ustawia do i /foo /foo/api/1 do za pomocą Request.PathBase /foo Request.Path /api/1 następującego polecenia:
+
+C#
+
+Kopiuj
+app.UsePathBase("/foo");
+Oryginalna ścieżka i podstawa ścieżki są ponowniestosowane, gdy oprogramowanie pośredniczące jest wywoływane ponownie w odwrotnej kolejności. Aby uzyskać więcej informacji na temat przetwarzania zamówień oprogramowania pośredniczącego, zobacz ASP.NET Core Middleware .
+
+Jeśli serwer proxy przycina ścieżkę (na przykład przekazywanie do ), napraw przekierowania i linki, ustawiając /foo/api/1 /api/1 właściwość PathBase żądania:
+
+C#
+
+Kopiuj
+app.Use((context, next) =>
+{
+    context.Request.PathBase = new PathString("/foo");
+    return next();
+});
+Jeśli serwer proxy dodaje dane ścieżki, odrzuć część ścieżki, aby naprawić przekierowania i linki, używając właściwości i przypisując StartsWithSegments Path ją:
+
+C#
+
+Kopiuj
+app.Use((context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/foo", out var remainder))
+    {
+        context.Request.Path = remainder;
+    }
+
+    return next();
+});
+Konfiguracja serwera proxy, który używa różnych nazw nagłówków
+Jeśli serwer proxy nie używa nagłówków o nazwach i do przekazywania adresu/portu serwera proxy i informacji o schemacie inicjatora, ustaw opcje i , aby dopasować nazwy nagłówków używane przez X-Forwarded-For X-Forwarded-Proto serwer ForwardedForHeaderName ForwardedProtoHeaderName proxy:
+
+C#
+
+Kopiuj
+services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedForHeaderName = "Header_Name_Used_By_Proxy_For_X-Forwarded-For_Header";
+    options.ForwardedProtoHeaderName = "Header_Name_Used_By_Proxy_For_X-Forwarded-Proto_Header";
+});
+Przekazywanie schematu dla odwrotnych serwerów proxy systemu Linux i innych niż IIS
+Aplikacje, które wywołują witrynę i umieszczają ją w pętli nieskończonej, jeśli są wdrażane na platformie Azure z systemem Linux App Service, maszynie wirtualnej platformy Azure z systemem Linux lub za dowolnym innym zwrotny serwer proxy oprócz UseHttpsRedirection UseHsts usług IIS. TLS jest przerywane przez zwrotny serwer proxy i nie jest świadomy Kestrel prawidłowego schematu żądania. Uwierzytelnianie OAuth i OIDC również nie powiodły się w tej konfiguracji, ponieważ generują nieprawidłowe przekierowania. UseIISIntegration Dodaje i konfiguruje oprogramowanie pośredniczące Forwarded Headers w przypadku uruchamiania za usługami IIS, ale nie ma pasującej konfiguracji automatycznej dla systemu Linux (integracja z serwerem Apache lub Nginx).
+
+Aby przesyłać dalej schemat z serwera proxy w scenariuszach innych niż usługi IIS, dodaj i skonfiguruj oprogramowanie pośredniczące Przekazane nagłówki. W Startup.ConfigureServices programie użyj następującego kodu:
+
+C#
+
+Kopiuj
+// using Microsoft.AspNetCore.HttpOverrides;
+
+if (string.Equals(
+    Environment.GetEnvironmentVariable("ASPNETCORE_FORWARDEDHEADERS_ENABLED"),
+    "true", StringComparison.OrdinalIgnoreCase))
+{
+    services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor |
+            ForwardedHeaders.XForwardedProto;
+        // Only loopback proxies are allowed by default.
+        // Clear that restriction because forwarders are enabled by explicit
+        // configuration.
+        options.KnownNetworks.Clear();
+        options.KnownProxies.Clear();
+    });
+}
+Przekazywanie certyfikatów
+Azure
+Aby skonfigurować Azure App Service przekazywania certyfikatów, zobacz Konfigurowanie wzajemnego uwierzytelniania protokołu TLSdla Azure App Service . Poniższe wskazówki dotyczą konfigurowania aplikacji ASP.NET Core aplikacji.
+
+W Startup.Configure programie dodaj następujący kod przed wywołaniem do app.UseAuthentication(); :
+
+C#
+
+Kopiuj
+app.UseCertificateForwarding();
+Skonfiguruj oprogramowanie pośredniczące przekazywania certyfikatów, aby określić nazwę nagłówka używaną przez platformę Azure. W Startup.ConfigureServices pliku dodaj następujący kod, aby skonfigurować nagłówek, z którego oprogramowanie pośredniczące tworzy certyfikat:
+
+C#
+
+Kopiuj
+services.AddCertificateForwarding(options =>
+    options.CertificateHeader = "X-ARR-ClientCert");
+Inne internetowe proxy
+Jeśli używany jest serwer proxy, który nie jest usługą IIS lub routingiem żądań aplikacji (ARR) usługi Azure App Service, skonfiguruj serwer proxy do przekazywania dalej certyfikatu otrzymanego w nagłówku HTTP. W Startup.Configure programie dodaj następujący kod przed wywołaniem do app.UseAuthentication(); :
+
+C#
+
+Kopiuj
+app.UseCertificateForwarding();
+Skonfiguruj oprogramowanie pośredniczące przekazywania certyfikatów, aby określić nazwę nagłówka. W Startup.ConfigureServices pliku dodaj następujący kod, aby skonfigurować nagłówek, z którego oprogramowanie pośredniczące tworzy certyfikat:
+
+C#
+
+Kopiuj
+services.AddCertificateForwarding(options =>
+    options.CertificateHeader = "YOUR_CERTIFICATE_HEADER_NAME");
+Jeśli serwer proxy nie koduje certyfikatu base64 (tak jak w przypadku serwera Nginx), ustaw HeaderConverter opcję . Rozważmy następujący przykład w Startup.ConfigureServices programie :
+
+C#
+
+Kopiuj
+services.AddCertificateForwarding(options =>
+{
+    options.CertificateHeader = "YOUR_CUSTOM_HEADER_NAME";
+    options.HeaderConverter = (headerValue) =>
+    {
+        var clientCertificate =
+           /* some conversion logic to create an X509Certificate2 */
+        return clientCertificate;
+    }
+});
+Rozwiązywanie problemów
+Jeśli nagłówki nie są przekazywane zgodnie z oczekiwaniami, włącz rejestrowanie. Jeśli dzienniki nie zawierają wystarczających informacji do rozwiązania problemu, wyliczenie nagłówków żądań odebranych przez serwer. Użyj wbudowanego oprogramowania pośredniczącego, aby zapisywać nagłówki żądań w odpowiedzi aplikacji lub rejestrować nagłówki.
+
+Aby zapisać nagłówki w odpowiedzi aplikacji, umieść następujące wbudowane oprogramowanie pośredniczące terminalu bezpośrednio po wywołaniu w UseForwardedHeaders pliku Startup.Configure :
+
+C#
+
+Kopiuj
+app.Run(async (context) =>
+{
+    context.Response.ContentType = "text/plain";
+
+    // Request method, scheme, and path
+    await context.Response.WriteAsync(
+        $"Request Method: {context.Request.Method}{Environment.NewLine}");
+    await context.Response.WriteAsync(
+        $"Request Scheme: {context.Request.Scheme}{Environment.NewLine}");
+    await context.Response.WriteAsync(
+        $"Request Path: {context.Request.Path}{Environment.NewLine}");
+
+    // Headers
+    await context.Response.WriteAsync($"Request Headers:{Environment.NewLine}");
+
+    foreach (var header in context.Request.Headers)
+    {
+        await context.Response.WriteAsync($"{header.Key}: " +
+            $"{header.Value}{Environment.NewLine}");
+    }
+
+    await context.Response.WriteAsync(Environment.NewLine);
+
+    // Connection: RemoteIp
+    await context.Response.WriteAsync(
+        $"Request RemoteIp: {context.Connection.RemoteIpAddress}");
+});
+Możesz zapisywać w dziennikach zamiast w treści odpowiedzi. Zapisywanie w dziennikach umożliwia normalnie działanie witryny podczas debugowania.
+
+Aby zapisywać dzienniki zamiast w treści odpowiedzi:
+
+ILogger<Startup>Wstrzyknąć do klasy zgodnie z opisem w tece Create logs in Startup (Tworzenie Startup dzienników w uruchamianiu).
+Umieść następujące wbudowane oprogramowanie pośredniczące bezpośrednio po wywołaniu w UseForwardedHeaders . Startup.Configure
+C#
+
+Kopiuj
+app.Use(async (context, next) =>
+{
+    // Request method, scheme, and path
+    _logger.LogDebug("Request Method: {Method}", context.Request.Method);
+    _logger.LogDebug("Request Scheme: {Scheme}", context.Request.Scheme);
+    _logger.LogDebug("Request Path: {Path}", context.Request.Path);
+
+    // Headers
+    foreach (var header in context.Request.Headers)
+    {
+        _logger.LogDebug("Header: {Key}: {Value}", header.Key, header.Value);
+    }
+
+    // Connection: RemoteIp
+    _logger.LogDebug("Request RemoteIp: {RemoteIpAddress}",
+        context.Connection.RemoteIpAddress);
+
+    await next();
+});
+Po przetworzeniu X-Forwarded-{For|Proto|Host} wartości są przenoszone do X-Original-{For|Proto|Host} . Jeśli w danym nagłówku znajduje się wiele wartości, oprogramowanie pośredniczące Forwarded Headers przetwarza nagłówki w odwrotnej kolejności od prawej do lewej. Wartość ForwardLimit domyślna to (jeden), więc przetwarzana jest tylko najbardziej po prawej stronie wartość z nagłówków, 1 chyba że wartość jest ForwardLimit zwiększana.
+
+Oryginalny zdalny adres IP żądania musi odpowiadać wpisowi na listach lub przed KnownProxies KnownNetworks przetworzeniem przesyłanych dalej nagłówków. Ogranicza to fałszowanie nagłówka, nie akceptując przesyłania dalej z niezaufanych serwerów proxy. Po wykryciu nieznanego serwera proxy rejestrowanie wskazuje adres serwera proxy:
+
+Konsola
+
+Kopiuj
+September 20th 2018, 15:49:44.168 Unknown proxy: 10.0.0.100:54321
+W poprzednim przykładzie 10.0.0.100 jest serwerem proxy. Jeśli serwer jest zaufanym serwerem proxy, dodaj adres IP serwera do adresu (lub dodaj zaufaną sieć do usługi ) w KnownProxies KnownNetworks programie Startup.ConfigureServices . Aby uzyskać więcej informacji, zobacz sekcję Opcje oprogramowania pośredniczącego Nagłówki dalej.
+
+C#
+
+Kopiuj
+services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.KnownProxies.Add(IPAddress.Parse("10.0.0.100"));
+});
+ Ważne
+
+Zezwalaj tylko zaufanym serwerów proxy i sieciom na przekazywanie nagłówków. W przeciwnym razie możliwe są ataki podszywające się pod adresy IP.
