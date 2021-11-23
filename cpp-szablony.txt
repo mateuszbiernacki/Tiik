@@ -1,0 +1,209 @@
+Szablony są podstawą programowania ogólnego w języku C++. Jako silnie typiście język C++ wymaga, aby wszystkie zmienne zawierały określony typ, jawnie zadeklarowany przez programistę lub wywołany przez kompilator. Jednak wiele struktur i algorytmów danych wygląda tak samo niezależnie od typu, na jakim działają. Szablony umożliwiają definiowanie operacji klasy lub funkcji i pozwalają użytkownikowi określić, z jakimi konkretnymi typami te operacje powinny pracować.
+
+Definiowanie i używanie szablonów
+Szablon jest konstrukcją, która generuje zwykły typ lub funkcję w czasie kompilacji na podstawie argumentów dostarczanych przez użytkownika dla parametrów szablonu. Na przykład można zdefiniować szablon funkcji w ten sposób:
+
+C++
+
+Kopiuj
+template <typename T>
+T minimum(const T& lhs, const T& rhs)
+{
+    return lhs < rhs ? lhs : rhs;
+}
+Powyższy kod opisuje szablon dla funkcji ogólnej z pojedynczym parametrem typu T, którego wartości zwracane i parametry wywołania (lhs i rhs) są tego typu. Parametr typu można nazwać w zależności od tego, co chcesz, ale według konwencji najczęściej używane są pojedyncze wielkie litery. T jest parametrem szablonu; Słowo typename kluczowe mówi, że ten parametr jest symbolem zastępczym typu. Gdy funkcja jest wywoływana, kompilator zastąpi każde wystąpienie funkcji konkretnym argumentem typu określonym przez użytkownika lub T wywołany przez kompilator. Proces, w którym kompilator generuje klasę lub funkcję na podstawie szablonu, jest określany jako wystąpienia szablonu; minimum<int> to wystąpienia szablonu minimum<T> .
+
+W innym miejscu użytkownik może zadeklarować wystąpienie szablonu, które jest wyspecjalizowane dla int. Załóżmy, get_a() i get_b() są funkcjami, które zwracają int:
+
+C++
+
+Kopiuj
+int a = get_a();
+int b = get_b();
+int i = minimum<int>(a, b);
+Jednak ponieważ jest to szablon funkcji, a kompilator może wydeduować typ z argumentów a i b , można go wywołać tak jak zwykłą T funkcję:
+
+C++
+
+Kopiuj
+int i = minimum(a, b);
+Gdy kompilator napotka tę ostatnią instrukcje, generuje nową funkcję, w której każde wystąpienie T w szablonie jest zastępowane przez int :
+
+C++
+
+Kopiuj
+int minimum(const int& lhs, const int& rhs)
+{
+    return lhs < rhs ? lhs : rhs;
+}
+Reguły dotyczące sposobu wykonywania przez kompilator odliczania typów w szablonach funkcji są oparte na zasadach dla zwykłych funkcji. Aby uzyskać więcej informacji, zobacz Overload Resolution of Function Template Calls (Rozpoznanie przeciążenia wywołań szablonów funkcji).
+
+Parametry typu
+W powyższym szablonie należy pamiętać, że parametr typu T nie jest w żaden sposób kwalifikowany, dopóki nie zostanie użyty w parametrach wywołania funkcji, gdzie zostaną dodane kwalifikatory minimum const i reference.
+
+Nie ma praktycznego ograniczenia liczby parametrów typu. Rozdziel wiele parametrów przecinkami:
+
+C++
+
+Kopiuj
+template <typename T, typename U, typename V> class Foo{};
+Słowo kluczowe class jest równoważne w tym typename kontekście. Poprzedni przykład można wyrazić w następujący sposób:
+
+C++
+
+Kopiuj
+template <class T, class U, class V> class Foo{};
+Za pomocą operatora wielokropka (...) można zdefiniować szablon, który przyjmuje dowolną liczbę zero lub więcej parametrów typu:
+
+C++
+
+Kopiuj
+template<typename... Arguments> class vtclass;
+
+vtclass< > vtinstance1;
+vtclass<int> vtinstance2;
+vtclass<float, bool> vtinstance3;
+Jako argumentu typu można użyć dowolnego typu wbudowanego lub zdefiniowanego przez użytkownika. Na przykład można użyć std::vector w bibliotece standardowej do przechowywania zmiennych typu int , , double std::string, MyClass , const MyClass *, i tak MyClass& dalej. Podstawowym ograniczeniem podczas korzystania z szablonów jest to, że argument typu musi obsługiwać wszystkie operacje, które są stosowane do parametrów typu. Jeśli na przykład wywołamy wywołanie minimum przy użyciu funkcji , jak w tym MyClass przykładzie:
+
+C++
+
+Kopiuj
+class MyClass
+{
+public:
+    int num;
+    std::wstring description;
+};
+
+int main()
+{
+    MyClass mc1 {1, L"hello"};
+    MyClass mc2 {2, L"goodbye"};
+    auto result = minimum(mc1, mc2); // Error! C2678
+}
+Zostanie wygenerowany błąd kompilatora, MyClass ponieważ nie zapewnia przeciążenia < operatora.
+
+Nie jest wymagane, aby argumenty typu dla każdego określonego szablonu należały do tej samej hierarchii obiektów, chociaż można zdefiniować szablon, który wymusza takie ograniczenie. Techniki obiektowe można łączyć z szablonami. Na przykład można przechowywać pochodny* w wektorze <Base*> . Należy pamiętać, że argumenty muszą być wskaźnikami
+
+C++
+
+Kopiuj
+vector<MyClass*> vec;
+   MyDerived d(3, L"back again", time(0));
+   vec.push_back(&d);
+
+   // or more realistically:
+   vector<shared_ptr<MyClass>> vec2;
+   vec2.push_back(make_shared<MyDerived>());
+Podstawowe wymagania, które i inne standardowe kontenery bibliotek nakładają na elementy klasy , to te, które można przypisywać do kopiowania i std::vector T T konstruować kopię.
+
+Parametry inne niż typ
+W przeciwieństwie do typów ogólnych w innych językach, takich jak C# i Java, szablony języka C++ obsługują parametry inne niż typy, nazywane również parametrami wartości. Na przykład można podać stałą wartość całkowitą, aby określić długość tablicy, tak jak w tym przykładzie, który jest podobny do klasy std::array w bibliotece standardowej:
+
+C++
+
+Kopiuj
+template<typename T, size_t L>
+class MyArray
+{
+    T arr[L];
+public:
+    MyArray() { ... }
+};
+Zwróć uwagę na składnię w deklaracji szablonu. Wartość jest przekazywana jako argument szablonu w czasie size_t kompilacji i musi być const constexpr wyrażeniem lub . Użyj go w ten sposób:
+
+C++
+
+Kopiuj
+MyArray<MyClass*, 10> arr;
+Inne rodzaje wartości, w tym wskaźniki i odwołania, mogą być przekazywane jako parametry inne niż typ. Na przykład można przekazać wskaźnik do funkcji lub obiektu funkcji, aby dostosować pewne działanie wewnątrz kodu szablonu.
+
+Wyliczeń typów dla parametrów szablonu innych niż typ
+W Visual Studio 2017 r. i nowszych w trybie /std:c++17 kompilator wywłaszczy typ argumentu szablonu innego niż typ zadeklarowany za pomocą auto funkcji :
+
+C++
+
+Kopiuj
+template <auto x> constexpr auto constant = x;
+
+auto v1 = constant<5>;      // v1 == 5, decltype(v1) is int
+auto v2 = constant<true>;   // v2 == true, decltype(v2) is bool
+auto v3 = constant<'a'>;    // v3 == 'a', decltype(v3) is char
+Szablony jako parametry szablonu
+Szablon może być parametrem szablonu. W tym przykładzie MojaKlasa2 ma dwa parametry szablonu: parametr nazwy typu T i parametr szablonu Arr:
+
+C++
+
+Kopiuj
+template<typename T, template<typename U, int I> class Arr>
+class MyClass2
+{
+    T t; //OK
+    Arr<T, 10> a;
+    U u; //Error. U not in scope
+};
+Ponieważ sam parametr Arr nie ma treści, jego nazwy parametrów nie są potrzebne. W rzeczywistości jest błędem, aby odwołać się do nazwy typename lub nazw parametrów klasy Arr z poziomu treści MyClass2 klasy . Z tego powodu nazwy parametrów typu Arr można pominąć, jak pokazano w tym przykładzie:
+
+C++
+
+Kopiuj
+template<typename T, template<typename, int> class Arr>
+class MyClass2
+{
+    T t; //OK
+    Arr<T, 10> a;
+};
+Argumenty szablonu domyślnego
+Szablony klas i funkcji mogą mieć argumenty domyślne. Jeśli szablon ma domyślny argument, możesz pozostawić go nieokreślony podczas jego używania. Na przykład szablon std::vector ma domyślny argument dla alokatora:
+
+C++
+
+Kopiuj
+template <class T, class Allocator = allocator<T>> class vector;
+W większości przypadków domyślna klasa std::allocator jest akceptowalna, dlatego należy użyć wektora w ten sposób:
+
+C++
+
+Kopiuj
+vector<int> myInts;
+W razie potrzeby można jednak określić niestandardowy alokator w ten sposób:
+
+C++
+
+Kopiuj
+vector<int, MyAllocator> ints;
+W przypadku wielu argumentów szablonu wszystkie argumenty po pierwszym domyślnym argumentie muszą mieć argumenty domyślne.
+
+W przypadku używania szablonu, którego wszystkie parametry są domyślne, użyj pustych nawiasów kątowych:
+
+C++
+
+Kopiuj
+template<typename A = int, typename B = double>
+class Bar
+{
+    //...
+};
+...
+int main()
+{
+    Bar<> bar; // use all default type arguments
+}
+Specjalizacja szablonu
+W niektórych przypadkach nie jest możliwe ani pożądane, aby szablon definiować dokładnie ten sam kod dla dowolnego typu. Na przykład można zdefiniować ścieżkę kodu do wykonania tylko wtedy, gdy argument typu jest wskaźnikiem, std::wstring lub typem pochodzącym z określonej klasy bazowej. W takich przypadkach można zdefiniować specjalizację szablonu dla tego konkretnego typu. Gdy użytkownik tworzy wystąpienia szablonu z tym typem, kompilator używa specjalizacji do wygenerowania klasy, a dla wszystkich innych typów kompilator wybiera bardziej ogólny szablon. Specjalizacje, w których wszystkie parametry są wyspecjalizowane, to kompletne specjalizacje. Jeśli tylko niektóre parametry są wyspecjalizowane, jest on nazywany częściową specjalizacją.
+
+C++
+
+Kopiuj
+template <typename K, typename V>
+class MyMap{/*...*/};
+
+// partial specialization for string keys
+template<typename V>
+class MyMap<string, V> {/*...*/};
+...
+MyMap<int, MyClass> classes; // uses original template
+MyMap<string, MyClass> classes2; // uses the partial specialization
+Szablon może mieć dowolną liczbę specjalizacji, o ile każdy wyspecjalizowany parametr typu jest unikatowy. Tylko szablony klas mogą być częściowo wyspecjalizowane. Wszystkie pełne i częściowe specjalizacje szablonu muszą być zadeklarowane w tej samej przestrzeni nazw co oryginalny szablon.
+
+Aby uzyskać więcej informacji, zobacz Specjalizacja szablonu.
